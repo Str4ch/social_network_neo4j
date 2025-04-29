@@ -8,6 +8,34 @@ Transform the existing SQLite-based social network application to use Neo4j grap
 2. Basic understanding of Cypher query language
 3. Python 3.8+ installed
 
+## Workflow Setup
+1. **Fork the Repository**
+   - Click "Fork" at the top-right of the original repository page
+   - Clone your forked copy:
+     ```bash
+     git clone https://github.com/YOUR_USERNAME/social-network.git
+     cd social-network
+     ```
+2. **Create Feature Branch**
+   ```bash
+   git checkout -b neo4j-migration
+   ```
+
+3. **Commit Changes**
+   * After completing EACH task below:
+   ```bash
+   git add .
+   git commit -m "Task X: Brief description of changes"
+   ```
+
+4. **Push Changes**
+   ```bash
+   git push origin neo4j-migration
+   ```
+
+5. **(Optional) Create Pull Request**
+* From your fork's GitHub page, create PR to original repository when complete
+  
 ## Tasks
 
 ### 1. Environment Setup

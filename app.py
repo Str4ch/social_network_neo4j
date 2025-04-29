@@ -1,28 +1,42 @@
 # social_network.py
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
-import sqlite3
+from neo4j import GraphDatabase
 from dataclasses import dataclass
 from typing import List, Optional
+
+from neo4j import GraphDatabase
+
+import os
+
+from dotenv import load_dotenv, dotenv_values 
+
+load_dotenv() 
+
+URI = os.getenv("URI")
+AUTH = (os.getenv("USERNAME"), os.getenv("PASSWORD"))
+
+with GraphDatabase.driver(URI, auth=AUTH) as driver:
+    driver.verify_connectivity()
 
 # ======================
 # Database Access Layer
 # ======================
-class Database:
+'''class Database:
     def __init__(self, db_name='social_network.db'):
         self.db_name = db_name
         self._init_db()
     
     def _init_db(self):
         with self._get_connection() as conn:
-            conn.execute('''
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE NOT NULL,
                     name TEXT NOT NULL
                 )
-            ''')
+            """)
             
-            conn.execute('''
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS posts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL,
@@ -30,9 +44,9 @@ class Database:
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 )
-            ''')
+            """)
             
-            conn.execute('''
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS followers (
                     follower_id INTEGER NOT NULL,
                     followee_id INTEGER NOT NULL,
@@ -40,7 +54,7 @@ class Database:
                     FOREIGN KEY(follower_id) REFERENCES users(id),
                     FOREIGN KEY(followee_id) REFERENCES users(id)
                 )
-            ''')
+            """)
     
     def _get_connection(self):
         return sqlite3.connect(self.db_name)
@@ -75,12 +89,12 @@ class Database:
     def get_posts_by_user(self, user_id: int) -> List[dict]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
+            cursor.execute("""
                 SELECT p.id, p.content, p.timestamp, u.username, u.name 
                 FROM posts p JOIN users u ON p.user_id = u.id 
                 WHERE p.user_id = ?
                 ORDER BY p.timestamp DESC
-            ''', (user_id,))
+            """, (user_id,))
             return [{
                 'id': row[0],
                 'content': row[1],
@@ -92,14 +106,14 @@ class Database:
     def get_feed(self, user_id: int) -> List[dict]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
+            cursor.execute("""
                 SELECT p.id, p.content, p.timestamp, u.username, u.name 
                 FROM posts p 
                 JOIN users u ON p.user_id = u.id
                 JOIN followers f ON p.user_id = f.followee_id
                 WHERE f.follower_id = ?
                 ORDER BY p.timestamp DESC
-            ''', (user_id,))
+            """, (user_id,))
             return [{
                 'id': row[0],
                 'content': row[1],
@@ -121,23 +135,23 @@ class Database:
     def get_followers(self, user_id: int) -> List[dict]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
+            cursor.execute("""
                 SELECT u.id, u.username, u.name 
                 FROM followers f 
                 JOIN users u ON f.follower_id = u.id
                 WHERE f.followee_id = ?
-            ''', (user_id,))
+            """, (user_id,))
             return [{'id': row[0], 'username': row[1], 'name': row[2]} for row in cursor.fetchall()]
     
     def get_following(self, user_id: int) -> List[dict]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
+            cursor.execute("""
                 SELECT u.id, u.username, u.name 
                 FROM followers f 
                 JOIN users u ON f.followee_id = u.id
                 WHERE f.follower_id = ?
-            ''', (user_id,))
+            """, (user_id,))
             return [{'id': row[0], 'username': row[1], 'name': row[2]} for row in cursor.fetchall()]
 
     def unfollow_user(self, follower_id: int, followee_id: int) -> bool:
@@ -301,4 +315,4 @@ app.jinja_env.globals.update(
 )
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True)'''

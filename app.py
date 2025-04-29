@@ -1,151 +1,165 @@
 # social_network.py
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
-import sqlite3
+from neo4j import GraphDatabase
 from dataclasses import dataclass
 from typing import List, Optional
+
+from neo4j import GraphDatabase
+
+import os
+
+from dotenv import load_dotenv, dotenv_values 
+
+load_dotenv() 
+
 
 # ======================
 # Database Access Layer
 # ======================
+from typing import List, Optional
+
 class Database:
-    def __init__(self, db_name='social_network.db'):
-        self.db_name = db_name
+    URI = os.getenv("URI")
+    AUTH = (os.getenv("USERNAME"), os.getenv("PASSWORD"))
+    driver = GraphDatabase.driver(URI, auth=AUTH)
+
+    def __init__(self):
         self._init_db()
-    
+
     def _init_db(self):
-        with self._get_connection() as conn:
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    name TEXT NOT NULL
-                )
-            ''')
-            
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS posts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    content TEXT NOT NULL,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(user_id) REFERENCES users(id)
-                )
-            ''')
-            
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS followers (
-                    follower_id INTEGER NOT NULL,
-                    followee_id INTEGER NOT NULL,
-                    PRIMARY KEY(follower_id, followee_id),
-                    FOREIGN KEY(follower_id) REFERENCES users(id),
-                    FOREIGN KEY(followee_id) REFERENCES users(id)
-                )
-            ''')
-    
-    def _get_connection(self):
-        return sqlite3.connect(self.db_name)
-    
-    # User operations
-    def create_user(self, username: str, name: str) -> int:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('INSERT INTO users (username, name) VALUES (?, ?)', (username, name))
-            return cursor.lastrowid
-    
-    def get_user(self, user_id: int) -> Optional[dict]:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT id, username, name FROM users WHERE id = ?', (user_id,))
-            row = cursor.fetchone()
-            return {'id': row[0], 'username': row[1], 'name': row[2]} if row else None
-    
+        self.driver.execute_query(
+            "CREATE CONSTRAINT unique_user_id IF NOT EXISTS FOR (u:User) REQUIRE u.user_id IS UNIQUE;",
+            database_="neo4j"
+        )
+        self.driver.execute_query(
+            "CREATE CONSTRAINT unique_username IF NOT EXISTS FOR (u:User) REQUIRE u.username IS UNIQUE;",
+            database_="neo4j"
+        )
+
+    def create_user(self, user_id: str, username: str):
+        self.driver.execute_query(
+            """
+            CREATE (u:User { user_id: $user_id, username: $username })
+            """,
+            parameters={"user_id": user_id, "username": username},
+            database_="neo4j"
+        )
+
     def get_all_users(self) -> List[dict]:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT id, username, name FROM users')
-            return [{'id': row[0], 'username': row[1], 'name': row[2]} for row in cursor.fetchall()]
-    
-    # Post operations
-    def create_post(self, user_id: int, content: str) -> int:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('INSERT INTO posts (user_id, content) VALUES (?, ?)', (user_id, content))
-            return cursor.lastrowid
-    
+        result = self.driver.execute_query(
+            """
+            MATCH (u:User)
+            RETURN u.user_id AS user_id, u.username AS username, id(u) AS id
+            """,
+            database_="neo4j"
+        )[0]
+        return [{"user": r["user_id"], "name": r["username"], "id": r["id"]} for r in result]
+
+    def get_user(self, user_id: int) -> Optional[dict]:
+        result = self.driver.execute_query(
+            """
+            MATCH (u:User)
+            WHERE id(u) = """ + str(user_id) + """
+            RETURN u.user_id AS user_id, u.username AS username, id(u) AS id
+            """,
+            parameters={"id": user_id},
+            database_="neo4j"
+        )[0]
+        if result:
+            r = result[0]
+            return {"user": r["user_id"], "name": r["username"], "id": r["id"]}
+        return None
+
+    def create_post(self, user_id: str, content: str) -> int:
+        result = self.driver.execute_query(
+            """
+            MATCH (u:User {user_id: $user_id})
+            CREATE (p:Post {content: $content, timestamp: timestamp()})
+            SET p.user_id = $user_id
+            CREATE (u)-[:POSTED]->(p)
+            RETURN id(p) AS post_id
+            """,
+            parameters={"user_id": user_id, "content": content},
+            database_="neo4j"
+        )
+        return result[0]["post_id"]
+
     def get_posts_by_user(self, user_id: int) -> List[dict]:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT p.id, p.content, p.timestamp, u.username, u.name 
-                FROM posts p JOIN users u ON p.user_id = u.id 
-                WHERE p.user_id = ?
-                ORDER BY p.timestamp DESC
-            ''', (user_id,))
-            return [{
-                'id': row[0],
-                'content': row[1],
-                'timestamp': row[2],
-                'username': row[3],
-                'name': row[4]
-            } for row in cursor.fetchall()]
-    
+        result = self.driver.execute_query(
+            """
+            MATCH (u:User)-[:POSTED]->(p:Post)
+            WHERE id(u) =  """ + str(user_id) + """
+            RETURN p.content AS content, p.timestamp AS timestamp, u.username AS username
+            ORDER BY p.timestamp DESC
+            """,
+            parameters={"id": user_id},
+            database_="neo4j"
+        )[0]
+        return [{"content": r["content"], "timestamp": r["timestamp"], "username": r["username"]} for r in result]
+
     def get_feed(self, user_id: int) -> List[dict]:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT p.id, p.content, p.timestamp, u.username, u.name 
-                FROM posts p 
-                JOIN users u ON p.user_id = u.id
-                JOIN followers f ON p.user_id = f.followee_id
-                WHERE f.follower_id = ?
-                ORDER BY p.timestamp DESC
-            ''', (user_id,))
-            return [{
-                'id': row[0],
-                'content': row[1],
-                'timestamp': row[2],
-                'username': row[3],
-                'name': row[4]
-            } for row in cursor.fetchall()]
-    
-    # Follow operations
+        result = self.driver.execute_query(
+            """
+            MATCH (u:User)-[:FOLLOWS]->(f:User)-[:POSTED]->(p:Post)
+            WHERE id(u) =  """ + str(user_id) + """
+            RETURN p.content AS content, p.timestamp AS timestamp, f.username AS username
+            ORDER BY p.timestamp DESC
+            """,
+            parameters={"id": user_id},
+            database_="neo4j"
+        )[0]
+        return [{"content": r["content"], "timestamp": r["timestamp"], "username": r["username"]} for r in result]
+
     def follow_user(self, follower_id: int, followee_id: int) -> bool:
-        with self._get_connection() as conn:
-            try:
-                conn.execute('INSERT INTO followers (follower_id, followee_id) VALUES (?, ?)', 
-                           (follower_id, followee_id))
-                return True
-            except sqlite3.IntegrityError:
-                return False
-    
+        result = self.driver.execute_query(
+            """
+            MATCH (f:User), (u:User)
+            WHERE id(f) = $follower_id AND id(u) = $followee_id
+            CREATE (f)-[:FOLLOWS]->(u)
+            RETURN COUNT(*) AS relationship_created
+            """,
+            parameters={"follower_id": follower_id, "followee_id": followee_id},
+            database_="neo4j"
+        )
+        return result[0]["relationship_created"] > 0
+
     def get_followers(self, user_id: int) -> List[dict]:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT u.id, u.username, u.name 
-                FROM followers f 
-                JOIN users u ON f.follower_id = u.id
-                WHERE f.followee_id = ?
-            ''', (user_id,))
-            return [{'id': row[0], 'username': row[1], 'name': row[2]} for row in cursor.fetchall()]
-    
+        result = self.driver.execute_query(
+            """
+            MATCH (f:User)-[:FOLLOWS]->(u:User)
+            WHERE id(u) = """ + str(user_id) + """
+            RETURN f.user_id AS user_id, f.username AS username
+            """,
+            parameters={"id": user_id},
+            database_="neo4j"
+        )[0]
+        return [{"user": r["user_id"], "name": r["username"]} for r in result]
+
     def get_following(self, user_id: int) -> List[dict]:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT u.id, u.username, u.name 
-                FROM followers f 
-                JOIN users u ON f.followee_id = u.id
-                WHERE f.follower_id = ?
-            ''', (user_id,))
-            return [{'id': row[0], 'username': row[1], 'name': row[2]} for row in cursor.fetchall()]
+        result = self.driver.execute_query(
+            """
+            MATCH (u:User)-[:FOLLOWS]->(f:User)
+            WHERE id(u) =  """ + str(user_id) + """
+            RETURN f.user_id AS user_id, f.username AS username
+            """,
+            parameters={"id": user_id},
+            database_="neo4j"
+        )[0]
+        return [{"user": r["user_id"], "name": r["username"]} for r in result]
 
     def unfollow_user(self, follower_id: int, followee_id: int) -> bool:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM followers WHERE follower_id = ? AND followee_id = ?', 
-                        (follower_id, followee_id))
-            return cursor.rowcount > 0
+        result = self.driver.execute_query(
+            """
+            MATCH (f:User)-[r:FOLLOWS]->(u:User)
+            WHERE id(f) = $follower_id AND id(u) = $followee_id
+            DELETE r
+            RETURN COUNT(*) AS relationship_deleted
+            """,
+            parameters={"follower_id": follower_id, "followee_id": followee_id},
+            database_="neo4j"
+        )
+        return result[0]["relationship_deleted"] > 0
+
 
 # ======================
 # Web Application
@@ -211,6 +225,7 @@ def home():
     current_user = None
     if 'user_id' in session:
         current_user = db.get_user(session['user_id'])
+    
     return render_template('index.html', users=users, current_user=current_user)
 
 @app.route('/user/<int:user_id>')
@@ -232,6 +247,7 @@ def user_profile(user_id):
     posts = db.get_posts_by_user(user_id)
     followers = db.get_followers(user_id)
     following = db.get_following(user_id)
+
     
     return render_template('profile.html', 
                          user=user, 

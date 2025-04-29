@@ -12,59 +12,41 @@ from dotenv import load_dotenv, dotenv_values
 
 load_dotenv() 
 
-URI = os.getenv("URI")
-AUTH = (os.getenv("USERNAME"), os.getenv("PASSWORD"))
-
-with GraphDatabase.driver(URI, auth=AUTH) as driver:
-    driver.verify_connectivity()
 
 # ======================
 # Database Access Layer
 # ======================
-'''class Database:
-    def __init__(self, db_name='social_network.db'):
-        self.db_name = db_name
+class Database:
+    URI = os.getenv("URI")
+    AUTH = (os.getenv("USERNAME"), os.getenv("PASSWORD"))
+    driver = GraphDatabase.driver(URI, auth=AUTH)
+
+    def __init__(self):
         self._init_db()
     
     def _init_db(self):
-        with self._get_connection() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    name TEXT NOT NULL
-                )
-            """)
-            
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS posts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    content TEXT NOT NULL,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(user_id) REFERENCES users(id)
-                )
-            """)
-            
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS followers (
-                    follower_id INTEGER NOT NULL,
-                    followee_id INTEGER NOT NULL,
-                    PRIMARY KEY(follower_id, followee_id),
-                    FOREIGN KEY(follower_id) REFERENCES users(id),
-                    FOREIGN KEY(followee_id) REFERENCES users(id)
-                )
-            """)
+        self.driver.execute_query("CREATE CONSTRAINT unique_user_id IF NOT EXISTS FOR (u:User) REQUIRE u.id IS UNIQUE;", database_="neo4j")
+        self.driver.execute_query("CREATE CONSTRAINT unique_username IF NOT EXISTS FOR (u:User) REQUIRE u.username IS UNIQUE;", database_="neo4j")
     
-    def _get_connection(self):
+    def create_user(self, username: str, name: str):
+        self.driver.execute_query("""
+            CREATE (u:User {
+            user_id: '""" + name + """',     // replace with actual unique ID
+            username: '""" + username + """'   // replace with actual unique username
+            });
+        """, database_="neo4j")
+
+    def get_all_users(self) -> List[dict]:
+        self.driver.execute_query("""
+            MATCH (u:User)
+            RETURN u.id, u.name
+        """, database_="neo4j")
+    
+    '''def _get_connection(self):
         return sqlite3.connect(self.db_name)
     
     # User operations
-    def create_user(self, username: str, name: str) -> int:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('INSERT INTO users (username, name) VALUES (?, ?)', (username, name))
-            return cursor.lastrowid
+    
     
     def get_user(self, user_id: int) -> Optional[dict]:
         with self._get_connection() as conn:
@@ -73,11 +55,7 @@ with GraphDatabase.driver(URI, auth=AUTH) as driver:
             row = cursor.fetchone()
             return {'id': row[0], 'username': row[1], 'name': row[2]} if row else None
     
-    def get_all_users(self) -> List[dict]:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT id, username, name FROM users')
-            return [{'id': row[0], 'username': row[1], 'name': row[2]} for row in cursor.fetchall()]
+    
     
     # Post operations
     def create_post(self, user_id: int, content: str) -> int:
@@ -159,7 +137,7 @@ with GraphDatabase.driver(URI, auth=AUTH) as driver:
             cursor = conn.cursor()
             cursor.execute('DELETE FROM followers WHERE follower_id = ? AND followee_id = ?', 
                         (follower_id, followee_id))
-            return cursor.rowcount > 0
+            return cursor.rowcount > 0'''
 
 # ======================
 # Web Application
@@ -179,7 +157,7 @@ with app.app_context():
 # ======================
 # API Endpoints
 # ======================
-@app.route('/api/users', methods=['GET'])
+'''@app.route('/api/users', methods=['GET'])
 def api_get_users():
     return jsonify(db.get_all_users())
 

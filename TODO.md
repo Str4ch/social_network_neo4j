@@ -34,7 +34,7 @@ Transform the existing SQLite-based social network application to use Neo4j grap
    ```
 
 5. **(Optional) Create Pull Request**
-* From your fork's GitHub page, create PR to original repository when complete
+   * From your fork's GitHub page, create PR to original repository when complete
   
 ## Tasks
 

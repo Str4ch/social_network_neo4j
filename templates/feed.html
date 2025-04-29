@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>{{ user.name }}'s Feed</title>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --secondary: #3f37c9;
+            --accent: #4895ef;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --success: #4cc9f0;
+            --danger: #f72585;
+            --warning: #f8961e;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: var(--dark);
+            background-color: #f5f7fa;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background-color: var(--primary);
+            color: white;
+            padding: 15px 0;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1,
+        h2,
+        h3 {
+            color: var(--secondary);
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--secondary);
+        }
+
+        .post {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .post-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .post-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: var(--accent);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .post-user {
+            font-weight: bold;
+        }
+
+        .post-username {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+
+        .post-meta {
+            color: #6c757d;
+            font-size: 0.8em;
+            margin-left: 50px;
+            margin-bottom: 10px;
+        }
+
+        .post-content {
+            margin-left: 50px;
+        }
+
+        .nav-links {
+            margin: 20px 0;
+        }
+
+        .nav-links a {
+            margin-right: 15px;
+            text-decoration: none;
+            color: var(--primary);
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="container header-content">
+            <h1>Social Network</h1>
+            <div class="login-logout">
+                {% if current_user %}
+                <div class="user-info">
+                    <div class="avatar">{{ current_user.name|first|upper }}</div>
+                    <span>{{ current_user.name }}</span>
+                </div>
+                <a href="{{ url_for('logout') }}" class="btn btn-danger">Logout</a>
+                {% else %}
+                <span>Please login to view feed</span>
+                {% endif %}
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="nav-links">
+            <a href="{{ url_for('user_profile', user_id=user.id) }}">← Back to profile</a>
+            <a href="{{ url_for('home') }}">View all users</a>
+        </div>
+
+        <h1>Your Feed</h1>
+        <p>Posts from people you follow</p>
+
+        {% if feed %}
+        {% for post in feed %}
+        <div class="post">
+            <div class="post-header">
+                <div class="post-avatar">{{ post.name|first|upper }}</div>
+                <div>
+                    <div class="post-user">{{ post.name }}</div>
+                    <div class="post-username">@{{ post.username }}</div>
+                </div>
+            </div>
+            <div class="post-meta">
+                Posted on {{ post.timestamp }}
+            </div>
+            <div class="post-content">
+                {{ post.content }}
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p>Your feed is empty. Follow some users to see their posts here!</p>
+        {% endif %}
+    </div>
+</body>
+
+</html>

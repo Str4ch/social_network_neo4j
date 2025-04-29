@@ -46,27 +46,30 @@ class Database:
         )
 
     def get_all_users(self) -> List[dict]:
-        return self.driver.execute_query(
-            """
-            MATCH (u:User)
-            RETURN u.user_id AS user_id, u.username AS username
-            """,
-            database_="neo4j"
-        )
-
-    def get_user(self, user_id: str) -> Optional[dict]:
         result = self.driver.execute_query(
             """
             MATCH (u:User)
-            WHERE u.user_id = $user_id
-            RETURN u AS user
+            RETURN u.user_id AS user_id, u.username AS username, id(u) AS id
             """,
-            parameters={"user_id": user_id},
             database_="neo4j"
-        )
-        return result[0] if result else None
+        )[0]
+        return [{"user": r["user_id"], "name": r["username"], "id": r["id"]} for r in result]
 
-    # Create post
+    def get_user(self, user_id: int) -> Optional[dict]:
+        result = self.driver.execute_query(
+            """
+            MATCH (u:User)
+            WHERE id(u) = """ + str(user_id) + """
+            RETURN u.user_id AS user_id, u.username AS username, id(u) AS id
+            """,
+            parameters={"id": user_id},
+            database_="neo4j"
+        )[0]
+        if result:
+            r = result[0]
+            return {"user": r["user_id"], "name": r["username"], "id": r["id"]}
+        return None
+
     def create_post(self, user_id: str, content: str) -> int:
         result = self.driver.execute_query(
             """
@@ -81,35 +84,37 @@ class Database:
         )
         return result[0]["post_id"]
 
-    # Get posts by user
-    def get_posts_by_user(self, user_id: str) -> List[dict]:
-        return self.driver.execute_query(
-            """
-            MATCH (u:User {user_id: $user_id})-[:POSTED]->(p:Post)
-            RETURN p.content AS content, p.timestamp AS timestamp, u.username AS username, u.name AS name
-            ORDER BY p.timestamp DESC
-            """,
-            parameters={"user_id": user_id},
-            database_="neo4j"
-        )
-
-    # Get feed of posts from users the user follows
-    def get_feed(self, user_id: str) -> List[dict]:
-        return self.driver.execute_query(
-            """
-            MATCH (f:User {user_id: $user_id})-[:FOLLOWS]->(followee:User)-[:POSTED]->(p:Post)
-            RETURN p.content AS content, p.timestamp AS timestamp, followee.username AS username, followee.name AS name
-            ORDER BY p.timestamp DESC
-            """,
-            parameters={"user_id": user_id},
-            database_="neo4j"
-        )
-
-    # Follow a user
-    def follow_user(self, follower_id: str, followee_id: str) -> bool:
+    def get_posts_by_user(self, user_id: int) -> List[dict]:
         result = self.driver.execute_query(
             """
-            MATCH (f:User {user_id: $follower_id}), (u:User {user_id: $followee_id})
+            MATCH (u:User)-[:POSTED]->(p:Post)
+            WHERE id(u) =  """ + str(user_id) + """
+            RETURN p.content AS content, p.timestamp AS timestamp, u.username AS username
+            ORDER BY p.timestamp DESC
+            """,
+            parameters={"id": user_id},
+            database_="neo4j"
+        )[0]
+        return [{"content": r["content"], "timestamp": r["timestamp"], "username": r["username"]} for r in result]
+
+    def get_feed(self, user_id: int) -> List[dict]:
+        result = self.driver.execute_query(
+            """
+            MATCH (u:User)-[:FOLLOWS]->(f:User)-[:POSTED]->(p:Post)
+            WHERE id(u) =  """ + str(user_id) + """
+            RETURN p.content AS content, p.timestamp AS timestamp, f.username AS username
+            ORDER BY p.timestamp DESC
+            """,
+            parameters={"id": user_id},
+            database_="neo4j"
+        )[0]
+        return [{"content": r["content"], "timestamp": r["timestamp"], "username": r["username"]} for r in result]
+
+    def follow_user(self, follower_id: int, followee_id: int) -> bool:
+        result = self.driver.execute_query(
+            """
+            MATCH (f:User), (u:User)
+            WHERE id(f) = $follower_id AND id(u) = $followee_id
             CREATE (f)-[:FOLLOWS]->(u)
             RETURN COUNT(*) AS relationship_created
             """,
@@ -118,33 +123,35 @@ class Database:
         )
         return result[0]["relationship_created"] > 0
 
-    # Get followers of a user
-    def get_followers(self, user_id: str) -> List[dict]:
-        return self.driver.execute_query(
-            """
-            MATCH (f:User)-[:FOLLOWS]->(u:User {user_id: $user_id})
-            RETURN f.user_id AS id, f.username AS username, f.name AS name
-            """,
-            parameters={"user_id": user_id},
-            database_="neo4j"
-        )
-
-    # Get users that the given user is following
-    def get_following(self, user_id: str) -> List[dict]:
-        return self.driver.execute_query(
-            """
-            MATCH (u:User {user_id: $user_id})-[:FOLLOWS]->(f:User)
-            RETURN f.user_id AS id, f.username AS username, f.name AS name
-            """,
-            parameters={"user_id": user_id},
-            database_="neo4j"
-        )
-
-    # Unfollow a user
-    def unfollow_user(self, follower_id: str, followee_id: str) -> bool:
+    def get_followers(self, user_id: int) -> List[dict]:
         result = self.driver.execute_query(
             """
-            MATCH (f:User {user_id: $follower_id})-[r:FOLLOWS]->(u:User {user_id: $followee_id})
+            MATCH (f:User)-[:FOLLOWS]->(u:User)
+            WHERE id(u) = """ + str(user_id) + """
+            RETURN f.user_id AS user_id, f.username AS username
+            """,
+            parameters={"id": user_id},
+            database_="neo4j"
+        )[0]
+        return [{"user": r["user_id"], "name": r["username"]} for r in result]
+
+    def get_following(self, user_id: int) -> List[dict]:
+        result = self.driver.execute_query(
+            """
+            MATCH (u:User)-[:FOLLOWS]->(f:User)
+            WHERE id(u) =  """ + str(user_id) + """
+            RETURN f.user_id AS user_id, f.username AS username
+            """,
+            parameters={"id": user_id},
+            database_="neo4j"
+        )[0]
+        return [{"user": r["user_id"], "name": r["username"]} for r in result]
+
+    def unfollow_user(self, follower_id: int, followee_id: int) -> bool:
+        result = self.driver.execute_query(
+            """
+            MATCH (f:User)-[r:FOLLOWS]->(u:User)
+            WHERE id(f) = $follower_id AND id(u) = $followee_id
             DELETE r
             RETURN COUNT(*) AS relationship_deleted
             """,
@@ -172,7 +179,7 @@ with app.app_context():
 # ======================
 # API Endpoints
 # ======================
-''''@app.route('/api/users', methods=['GET'])
+@app.route('/api/users', methods=['GET'])
 def api_get_users():
     return jsonify(db.get_all_users())
 
@@ -214,11 +221,10 @@ def api_follow_user():
 # ======================
 @app.route('/')
 def home():
-    users = db.get_all_users().records
+    users = db.get_all_users()
     current_user = None
     if 'user_id' in session:
         current_user = db.get_user(session['user_id'])
-    print(users)
     
     return render_template('index.html', users=users, current_user=current_user)
 
@@ -241,6 +247,7 @@ def user_profile(user_id):
     posts = db.get_posts_by_user(user_id)
     followers = db.get_followers(user_id)
     following = db.get_following(user_id)
+
     
     return render_template('profile.html', 
                          user=user, 
@@ -310,4 +317,4 @@ app.jinja_env.globals.update(
 )
 
 if __name__ == '__main__':
-    app.run(debug=True)'''
+    app.run(debug=True)
